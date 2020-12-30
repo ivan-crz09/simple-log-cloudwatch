@@ -132,6 +132,8 @@ class simpleLogCloudwatch {
 				} else {
 					throw err;
 				}
+			}else{
+				context._putLogEventsCW({ logGroupName, logStreamName, logEvents });
 			}
 		});
 	}
