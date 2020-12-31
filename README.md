@@ -73,7 +73,7 @@ const simpleLog = new simpleLogCloudwatch({
 
 
 //create the logs
-log4Cloudwatch.createLog("01-01-2020",["test-message-1","test-message-2"])
+simpleLog.createLog("01-01-2020",["test-message-1","test-message-2"])
 ```
 ---
 ### Additional Info
