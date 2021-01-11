@@ -102,7 +102,7 @@ class simpleLogCloudwatch {
 		this.cloudwatchlogs.putLogEvents(paramsEvent, function (err, data) {
 			try {
 				if (err) {
-					if (tryNumbers >= 2) {
+					if (tryNumbers >= 5) {
 						throw err;
 					}
 					if (
