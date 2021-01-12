@@ -1,6 +1,6 @@
 {
   "name": "simple-log-cloudwatch",
-  "version": "1.0.7",
+  "version": "1.0.8",
   "description": "This library is useful to send logs to cloudwatch with nodejs",
   "homepage": "https://github.com/ivan-crz09/simple-log-cloudwatch",
   "main": "index.js",
