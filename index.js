@@ -1,4 +1,5 @@
 const AWS = require('aws-sdk');
+const util = require('util');
 
 class simpleLogCloudwatch {
 	constructor(config) {
@@ -50,33 +51,40 @@ class simpleLogCloudwatch {
 		}
 	}
 
-	createLog(name, logs) {
-		if (!name) {
-			throw new Error(`Missing required argument: 'name' log event`);
-		}
+	async createLog(name, logs) {
+		return new Promise(async (resolve, reject) => {
+			try {
+				if (!name) {
+					throw new Error(`Missing required argument: 'name' log event`);
+				}
 
-		if (typeof name !== 'string') {
-			throw new Error(`Error type : 'name' needs to be string`);
-		}
+				if (typeof name !== 'string') {
+					throw new Error(`Error type : 'name' needs to be string`);
+				}
 
-		if (!logs) {
-			throw new Error(`Missing required argument: 'logs'`);
-		}
+				if (!logs) {
+					throw new Error(`Missing required argument: 'logs'`);
+				}
 
-		if (!Array.isArray(logs)) {
-			throw new Error(`Error type: 'logs' needs to be an Array`);
-		}
+				if (!Array.isArray(logs)) {
+					throw new Error(`Error type: 'logs' needs to be an Array`);
+				}
 
-		logs = this._formatMessages(logs);
+				logs = this._formatMessages(logs);
 
-		this._sendLog(name, logs);
+				await this._sendLog(name, logs);
+				return resolve();
+			} catch (error) {
+				return reject(error);
+			}
+		});
 	}
 
 	_formatMessages(logs) {
 		let formatLogs = [];
 		logs.forEach((log) => {
 			formatLogs.push({
-				message: log,
+				message: String(log),
 				timestamp: new Date().getTime()
 			});
 		});
@@ -84,58 +92,65 @@ class simpleLogCloudwatch {
 		return formatLogs;
 	}
 
-	_sendLog(name, logs) {
-		try {
-			let paramsEvent = {
-				logEvents: logs,
-				logGroupName: this.logGroupName,
-				logStreamName: name
-			};
-			this._createLogStream(paramsEvent);
-		} catch (error) {
-			throw error;
-		}
-	}
-
-	_putLogEventsCW(paramsEvent, tryNumbers = 0, token) {
-		let context = this;
-		this.cloudwatchlogs.putLogEvents(paramsEvent, function (err, data) {
+	async _sendLog(name, logs) {
+		return new Promise(async (resolve, reject) => {
 			try {
-				if (err) {
-					if (tryNumbers >= 5) {
-						throw err;
-					}
-					if (
-						err.code &&
-						(err.code === 'InvalidSequenceTokenException' ||
-							err.code === 'DataAlreadyAcceptedException')
-					) {
-						let numberToken = err.message.match(/\d+/);
-						paramsEvent.sequenceToken = String(numberToken);
-						context._putLogEventsCW(paramsEvent, tryNumbers + 1);
-					} else {
-						throw err;
-					}
-				}
+				let paramsEvent = {
+					logEvents: logs,
+					logGroupName: this.logGroupName,
+					logStreamName: name
+				};
+				return resolve(this._createLogStream(paramsEvent));
 			} catch (error) {
 				throw error;
 			}
 		});
 	}
 
-	_createLogStream({ logGroupName, logStreamName, logEvents }) {
-		let context = this;
-		this.cloudwatchlogs.createLogStream({ logGroupName, logStreamName }, function (err, data) {
-			if (err) {
-				if (err.code === 'ResourceAlreadyExistsException') {
-					context._putLogEventsCW({ logGroupName, logStreamName, logEvents });
-				} else {
-					throw err;
+	async _putLogEventsCW(paramsEvent, tryNumbers = 0, token) {
+		return new Promise(async (resolve, reject) => {
+			try {
+				let resp = await this.cloudwatchlogs.putLogEvents(paramsEvent).promise();
+				return resolve({});
+			} catch (error) {
+				if (tryNumbers >= 10) {
+					return reject(error);
 				}
-			}else{
-				context._putLogEventsCW({ logGroupName, logStreamName, logEvents });
+				if (
+					error.code &&
+					(error.code === 'InvalidSequenceTokenException' ||
+						error.code === 'DataAlreadyAcceptedException')
+				) {
+					let numberToken = error.message.match(/\d+/);
+					paramsEvent.sequenceToken = String(numberToken);
+					await this._putLogEventsCW(paramsEvent, tryNumbers + 1);
+					return resolve({});
+				} else {
+					return reject(error);
+				}
 			}
 		});
+	}
+
+	async _createLogStream({ logGroupName, logStreamName, logEvents }) {
+		let context = this;
+		return new Promise(async (resolve, reject) => {
+			try {
+				const resp = await this.cloudwatchlogs
+					.createLogStream({ logGroupName, logStreamName })
+					.promise();
+				await context._putLogEventsCW({ logGroupName, logStreamName, logEvents });
+				return resolve();
+			} catch (error) {
+				if (error && error.code && error.code === 'ResourceAlreadyExistsException') {
+					await context._putLogEventsCW({ logGroupName, logStreamName, logEvents });
+					return resolve();
+				}
+				return reject(error);
+			}
+			
+		});
+		
 	}
 }
 
